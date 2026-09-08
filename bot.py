@@ -27,6 +27,9 @@ ISIM_SOZLUGU = {
     "SAP.DE": "SAP SE (Almanya)", "SIE.DE": "Siemens AG (Almanya)", "AIR.PA": "Airbus SE (Fransa)"
 }
 
+# Bilinen kripto sembolleri listesi (Yanlış eşleşmeyi önlemek için)
+KRIPTO_LISTESI = ["BTC", "ETH", "SOL", "XRP", "AVAX", "DOGE", "BNB", "ADA", "NEAR", "COIN"]
+
 last_update_id = 0
 
 def get_turkey_time():
@@ -98,6 +101,11 @@ def teknik_indikatorleri_hesapla(df):
 def evrensel_hisse_bul(hisse_kodu):
     code = hisse_kodu.upper().strip()
     
+    # Eğer girilen kod bir kripto ise doğrudan -USD uzantısını önceliklendir
+    if code in KRIPTO_LISTESI or code.replace("-USD", "") in KRIPTO_LISTESI:
+        temiz_ kripto = code.replace("-USD", "")
+        return temiz_ kripto + "-USD"
+
     adaylar = [
         code,
         code + "-USD",
@@ -248,7 +256,7 @@ def komutlari_kontrol_et():
                 if "TÜM PİYASA ANALİZİ" in text_upper or text_upper in ["DIKKAT", "DİKKAT", "ÖZET", "OZET"]:
                     tum_piyasa_analizi_gonder()
                 
-                # EVRENSEL ANALİZ KOMUTU (Küçük/Büyük Harf Bağımsız: analiz, Analiz, ANALİZ, /analiz vb.)
+                # EVRENSEL ANALİZ KOMUTU
                 elif text_upper.startswith("ANALİZ") or text_upper.startswith("ANALIZ") or text_upper.startswith("/ANALIZ"):
                     parcalar = text.split()
                     if len(parcalar) > 1:
@@ -256,23 +264,12 @@ def komutlari_kontrol_et():
                         telegram_mesaj_gonder(f"⏳ `{kod.upper()}` için detaylı analiz hesaplanıyor...")
                         telegram_mesaj_gonder(evrensel_analiz_et(kod))
                     else:
-                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `analiz thyao`, `Analiz eth`, `ANALİZ mac`, `analiz aapl`")
+                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `analiz thyao`, `Analiz btc`, `analiz mac`")
     except Exception as e:
         print(f"Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot tam entegre evrensel analiz moduyla aktif!")
-    telegram_mesaj_gonder(
-        "🤖 *Bot Güncellendi (Küçük/Büyük Harf Duyarsız Analiz)* \n\n"
-        "Artık ister büyük harfle (`ANALİZ THYAO`), ister küçük harfle (`analiz eth`) yaz; sistem komutunu anında kapıp analiz edecektir!\n\n"
-        "📌 *Örnek Kullanımlar:*\n"
-        "🔹 `analiz thyao` / `ANALİZ THYAO`\n"
-        "🔹 `analiz eth` / `ANALİZ ETH`\n"
-        "🔹 `analiz mac` (Yerli Fon)\n"
-        "🔹 `analiz aapl` (ABD Hissesi)\n"
-        "🔹 `Tüm Piyasa Analizi` (Tüm kategorilerdeki gözde varlıkları listeler)"
-    )
-    
+    print("Bot kripto doğrulama filtresiyle aktif!")
     while True:
         komutlari_kontrol_et()
         time.sleep(10)

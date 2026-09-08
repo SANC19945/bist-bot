@@ -19,10 +19,13 @@ ISIM_SOZLUGU = {
     "META": "Meta Platforms (ABD)", "NFLX": "Netflix Inc. (ABD)", "AMD": "AMD (ABD)", "PLTR": "Palantir Tech (ABD)",
     "SPY": "SPDR S&P 500 ETF (ABD)", "QQQ": "Invesco QQQ Trust (ABD)", "VOO": "Vanguard S&P 500 ETF",
     "GLD": "SPDR Gold Shares (Altın ETF)", "SLV": "iShares Silver Trust (Gümüş ETF)",
-    # Yerli Fonlar (TEFAS)
-    "MAC.IS": "Marmara Capital Hisse Senedi Fonu", "TTE.IS": "İş Portföy BIST 100 Dışı Şirketler Fonu",
-    "TI2.IS": "İş Portföy Teknoloji Sektörleri Fonu", "IDH.IS": "İstanbul Portföy Birinci Hisse Fonu",
-    "MAC": "Marmara Capital Hisse Senedi Fonu", "TTE": "İş Portföy BIST 100 Dışı Şirketler Fonu",
+    # Yerli Fonlar & Hisseler (TEFAS / BIST)
+    "MAC.IS": "Marmara Capital Hisse Senedi Fonu", "MAC": "Marmara Capital Hisse Senedi Fonu",
+    "TTE.IS": "İş Portföy BIST 100 Dışı Şirketler Fonu", "TTE": "İş Portföy BIST 100 Dışı Şirketler Fonu",
+    "TI2.IS": "İş Portföy Teknoloji Sektörleri Fonu", "TI2": "İş Portföy Teknoloji Sektörleri Fonu",
+    "IDH.IS": "İstanbul Portföy Birinci Hisse Fonu", "IDH": "İstanbul Portföy Birinci Hisse Fonu",
+    "THF.IS": "THF Yatırım Fonu", "THF": "THF Yatırım Fonu",
+    "TLY.IS": "TLY Yatırım Fonu", "TLY": "TLY Yatırım Fonu",
     # Avrupa
     "SAP.DE": "SAP SE (Almanya)", "SIE.DE": "Siemens AG (Almanya)", "AIR.PA": "Airbus SE (Fransa)"
 }
@@ -67,7 +70,7 @@ def piyasa_listelerini_getir():
         "SPY", "QQQ", "VOO", "ARKK", "GLD", "SLV", "TLT"
     ]
     yerli_fonlar = [
-        "MAC.IS", "TTE.IS", "TI2.IS", "IDH.IS"
+        "MAC.IS", "TTE.IS", "TI2.IS", "IDH.IS", "THF.IS", "TLY.IS"
     ]
     kriptolar = [
         "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "AVAX-USD", "DOGE-USD", "NEAR-USD"
@@ -104,10 +107,11 @@ def evrensel_hisse_bul(hisse_kodu):
         temiz_kripto = code.replace("-USD", "")
         return temiz_kripto + "-USD"
 
+    # Yerli fonlar/hisseler için önce .IS uzantısını dene
     adaylar = [
+        code + ".IS",
         code,
         code + "-USD",
-        code + ".IS",
         code + ".TEFAS"
     ]
     
@@ -118,7 +122,7 @@ def evrensel_hisse_bul(hisse_kodu):
                 return aday
         except:
             continue
-    return code
+    return code + ".IS"
 
 def evrensel_analiz_et(hisse_kodu):
     symbol = evrensel_hisse_bul(hisse_kodu)
@@ -126,7 +130,7 @@ def evrensel_analiz_et(hisse_kodu):
     try:
         df = yf.download(symbol, period="3mo", interval="1d", progress=False)
         if df.empty or len(df) < 15:
-            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Kodu kontrol edin (Örn: `thyao`, `btc`, `mac`, `aapl`)."
+            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Kodu kontrol edin (Örn: `thyao`, `thf`, `tly`, `btc`)."
         
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -260,12 +264,12 @@ def komutlari_kontrol_et():
                         telegram_mesaj_gonder(f"⏳ `{kod.upper()}` için detaylı analiz hesaplanıyor...")
                         telegram_mesaj_gonder(evrensel_analiz_et(kod))
                     else:
-                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `analiz thyao`, `analiz btc`, `analiz mac`")
+                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `analiz thf`, `analiz tly`, `analiz thyao`")
     except Exception as e:
         print(f"Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot hatasız ve aktif!")
+    print("Bot fon eşleme filtresiyle aktif!")
     while True:
         komutlari_kontrol_et()
         time.sleep(10)

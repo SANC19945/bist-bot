@@ -1,5 +1,6 @@
 import os
 import time
+import threading
 import requests
 import yfinance as yf
 import pandas as pd
@@ -112,13 +113,29 @@ def evrensel_hisse_bul(hisse_kodu):
             continue
     return code + ".IS"
 
+def sinyal_Uret(df):
+    bugunku_ema9 = float(df['EMA9'].iloc[-1])
+    bugunku_ema21 = float(df['EMA21'].iloc[-1])
+    rsi_deger = float(df['RSI'].iloc[-1])
+    macd_val = float(df['MACD'].iloc[-1])
+    macd_sig = float(df['MACD_Signal'].iloc[-1])
+    
+    trend_pozitif = bugunku_ema9 > bugunku_ema21
+
+    if trend_pozitif and rsi_deger <= 65 and macd_val > macd_sig:
+        return "AL 🟢"
+    elif not trend_pozitif and rsi_deger >= 35:
+        return "SAT 🔴"
+    else:
+        return "TUT 🟡"
+
 def evrensel_analiz_et(hisse_kodu):
     symbol = evrensel_hisse_bul(hisse_kodu)
 
     try:
         df = yf.download(symbol, period="3mo", interval="1d", progress=False)
         if df.empty or len(df) < 15:
-            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Kodu kontrol edin (Örn: `thyao`, `btc`, `aapl`)."
+            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı."
         
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -223,6 +240,58 @@ def tum_piyasa_analizi_gonder():
             telegram_mesaj_gonder(mesaj)
             time.sleep(1)
 
+def periyodik_otomatik_sinyal_taramasi():
+    """Her 30 dakikada bir tüm kategorileri tarar ve AL/SAT/TUT sinyallerini özetler."""
+    while True:
+        try:
+            bist, abd, avrupa, etf, kriptolar = piyasa_listelerini_getir()
+            tum_listeler = [
+                ("🇹🇷 BİST Hisseleri", bist),
+                ("🪙 Kripto Paralar", kriptolar),
+                ("🇺🇸 ABD Hisseleri", abd),
+                ("🇪🇺 Avrupa Hisseleri", avrupa),
+                ("📊 ETF'ler", etf)
+            ]
+            
+            su_anki_zaman = get_turkey_time().strftime('%d.%m.%Y %H:%M')
+            rapor_parcalari = [f"⏰ *30 DAKİKALIK OTOMATİK AL/SAT/TUT RAPORU*\n_Zaman: {su_anki_zaman}_\n"]
+            
+            for grup_adi, liste in tum_listeler:
+                grup_satirlari = []
+                for kod in liste:
+                    try:
+                        df = yf.download(kod, period="1mo", interval="1d", progress=False)
+                        if df.empty or len(df) < 15:
+                            continue
+                        if isinstance(df.columns, pd.MultiIndex):
+                            df.columns = df.columns.get_level_values(0)
+                        df = teknik_indikatorleri_hesapla(df)
+                        
+                        sinyal = sinyal_Uret(df)
+                        fiyat = float(df['Close'].iloc[-1])
+                        temiz_ad = ISIM_SOZLUGU.get(kod, kod.replace(".IS", "").replace("-USD", ""))
+                        
+                        # Sadece net AL veya SAT verenleri ön plana çıkaralım, TUT'ları kalabalık yapmasın diye filtreleyebiliriz veya hepsini koyabiliriz.
+                        # Burada net durumu gösteriyoruz:
+                        grup_satirlari.append(f"• `{temiz_ad}`: {fiyat:,.2f} ➔ *{sinyal}*")
+                        if len(grup_satirlari) >= 5: # Her gruptan maksimum ilk 5 tanesi
+                            break
+                    except:
+                        continue
+                
+                if grup_satirlari:
+                    rapor_parcalari.append(f"*{grup_adi}*\n" + "\n".join(grup_satirlari))
+            
+            # Toplu raporu gönder
+            tam_rapor = "\n\n".join(rapor_parcalari)
+            telegram_mesaj_gonder(tam_rapor)
+            
+        except Exception as e:
+            print(f"Periyodik tarama hatası: {e}")
+            
+        # 30 dakika bekle (30 * 60 saniye = 1800 saniye)
+        time.sleep(1800)
+
 def komut_listesini_gonder():
     yardim_mesaji = (
         "🤖 *PİYASA ANALİZ BOTU - KOMUT LİSTESİ*\n\n"
@@ -231,11 +300,13 @@ def komut_listesini_gonder():
         "• `analiz [kod]` veya `/analiz [kod]`\n"
         "  _Örnekler:_ `analiz thyao`, `analiz btc`, `analiz aapl`, `analiz spy`\n\n"
         "🔥 *2. Piyasa Taraması & Özetler*\n"
-        "• `dikkat`, `dikkat çekenler`, `özel`, `ozet`, `tüm piyasa analizi`\n"
-        "  _Açıklama:_ Tüm borsa, kripto ve ETF listelerini tarayarak kritik seviyedeki varlıkları listeler.\n\n"
-        "ℹ️ *3. Yardım Menüsü*\n"
-        "• `komutlar` veya `/komutlar`\n"
-        "  _Açıklama:_ Bu yardım menüsünü ekrana getirir."
+        "• `dikkat`, `dikkat çekenler`, `ozet`, `tüm piyasa analizi`\n"
+        "  _Açıklama:_ Tüm kategorileri tarayarak kritik seviyedeki varlıkları listeler.\n\n"
+        "⚡ *3. Otomatik Sinyal Bildirimi*\n"
+        "• Bot her 30 dakikada bir tüm kategoriler için otomatik **AL / SAT / TUT** raporu gönderir.\n"
+        "• Hemen test etmek için `otomatik` veya `tarama` yazabilirsin.\n\n"
+        "ℹ️ *4. Yardım Menüsü*\n"
+        "• `komutlar` veya `/komutlar`"
     )
     telegram_mesaj_gonder(yardim_mesaji)
 
@@ -258,19 +329,25 @@ def komutlari_kontrol_et():
                 text_lower = text.lower()
                 text_upper = text.upper()
                 
-                # Tüm piyasa / özet tetikleyicileri (küçük veya büyük harf duyarsız)
                 piyasa_tetikleyicileri = [
                     "dikkat", "dikkat çekenler", "dikkat cekenter", "özel", "ozet", "özet", "tüm piyasa analizi", "tum piyasa analizi"
+                ]
+                
+                otomatik_tetikleyicileri = [
+                    "otomatik", "tarama", "sinyal", "al sat", "alsat"
                 ]
                 
                 if any(tetik in text_lower for tetik in piyasa_tetikleyicileri):
                     tum_piyasa_analizi_gonder()
                 
-                # Komut listesi / yardım tetikleyicileri
+                elif any(tetik in text_lower for tetik in otomatik_tetikleyicileri):
+                    telegram_mesaj_gonder("⏳ *Tüm piyasalar için anlık AL/SAT/TUT taraması başlatılıyor...*")
+                    # Arka plandaki fonksiyonu tetikleyebiliriz ya da doğrudan çalıştırabiliriz
+                    threading.Thread(target=periyodik_otomatik_sinyal_taramasi).start()
+                
                 elif text_lower in ["komutlar", "/komutlar", "yardim", "/yardim", "help", "/help"]:
                     komut_listesini_gonder()
                 
-                # Tekil analiz tetikleyicileri
                 elif text_upper.startswith("ANALİZ") or text_upper.startswith("ANALIZ") or text_upper.startswith("/ANALIZ"):
                     parcalar = text.split()
                     if len(parcalar) > 1:
@@ -283,7 +360,13 @@ def komutlari_kontrol_et():
         print(f"Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot küçük/büyük harf esnekliği ve komut listesiyle aktif!")
+    print("Bot 30 dakikalık otomatik AL/SAT bildirimleriyle aktif!")
+    
+    # 30 dakikada bir çalışacak arka plan thread'ini başlat
+    th = threading.Thread(target=periyodik_otomatik_sinyal_taramasi, daemon=True)
+    th.start()
+    
+    # Ana döngü Telegram komutlarını dinler
     while True:
         komutlari_kontrol_et()
         time.sleep(10)

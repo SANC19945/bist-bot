@@ -19,13 +19,6 @@ ISIM_SOZLUGU = {
     "META": "Meta Platforms (ABD)", "NFLX": "Netflix Inc. (ABD)", "AMD": "AMD (ABD)", "PLTR": "Palantir Tech (ABD)",
     "SPY": "SPDR S&P 500 ETF (ABD)", "QQQ": "Invesco QQQ Trust (ABD)", "VOO": "Vanguard S&P 500 ETF",
     "GLD": "SPDR Gold Shares (Altın ETF)", "SLV": "iShares Silver Trust (Gümüş ETF)",
-    # Yerli Fonlar & Hisseler (TEFAS / BIST)
-    "MAC.IS": "Marmara Capital Hisse Senedi Fonu", "MAC": "Marmara Capital Hisse Senedi Fonu",
-    "TTE.IS": "İş Portföy BIST 100 Dışı Şirketler Fonu", "TTE": "İş Portföy BIST 100 Dışı Şirketler Fonu",
-    "TI2.IS": "İş Portföy Teknoloji Sektörleri Fonu", "TI2": "İş Portföy Teknoloji Sektörleri Fonu",
-    "IDH.IS": "İstanbul Portföy Birinci Hisse Fonu", "IDH": "İstanbul Portföy Birinci Hisse Fonu",
-    "THF.IS": "THF Yatırım Fonu", "THF": "THF Yatırım Fonu",
-    "TLY.IS": "TLY Yatırım Fonu", "TLY": "TLY Yatırım Fonu",
     # Avrupa
     "SAP.DE": "SAP SE (Almanya)", "SIE.DE": "Siemens AG (Almanya)", "AIR.PA": "Airbus SE (Fransa)"
 }
@@ -69,13 +62,10 @@ def piyasa_listelerini_getir():
     etf_listesi = [
         "SPY", "QQQ", "VOO", "ARKK", "GLD", "SLV", "TLT"
     ]
-    yerli_fonlar = [
-        "MAC.IS", "TTE.IS", "TI2.IS", "IDH.IS", "THF.IS", "TLY.IS"
-    ]
     kriptolar = [
         "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "AVAX-USD", "DOGE-USD", "NEAR-USD"
     ]
-    return bist_hisseleri, abd_hisseleri, avrupa_hisseleri, etf_listesi, yerli_fonlar, kriptolar
+    return bist_hisseleri, abd_hisseleri, avrupa_hisseleri, etf_listesi, kriptolar
 
 def teknik_indikatorleri_hesapla(df):
     df['SMA5'] = df['Close'].rolling(window=5).mean()
@@ -107,12 +97,10 @@ def evrensel_hisse_bul(hisse_kodu):
         temiz_kripto = code.replace("-USD", "")
         return temiz_kripto + "-USD"
 
-    # Yerli fonlar/hisseler için önce .IS uzantısını dene
     adaylar = [
         code + ".IS",
         code,
-        code + "-USD",
-        code + ".TEFAS"
+        code + "-USD"
     ]
     
     for aday in adaylar:
@@ -130,7 +118,7 @@ def evrensel_analiz_et(hisse_kodu):
     try:
         df = yf.download(symbol, period="3mo", interval="1d", progress=False)
         if df.empty or len(df) < 15:
-            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Kodu kontrol edin (Örn: `thyao`, `thf`, `tly`, `btc`)."
+            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Kodu kontrol edin (Örn: `thyao`, `btc`, `aapl`)."
         
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -194,11 +182,10 @@ def evrensel_analiz_et(hisse_kodu):
         return f"⚠️ Analiz hatası: `{str(e)}`"
 
 def tum_piyasa_analizi_gonder():
-    bist, abd, avrupa, etf, fonlar, kriptolar = piyasa_listelerini_getir()
+    bist, abd, avrupa, etf, kriptolar = piyasa_listelerini_getir()
     
     kategoriler = [
         ("🇹🇷 TÜM PİYASA - DİKKAT ÇEKEN YERLİ HİSSELER", bist),
-        ("fond TÜM PİYASA - DİKKAT ÇEKEN YERLİ FONLAR", fonlar),
         ("🪙 TÜM PİYASA - DİKKAT ÇEKEN KRİPTOLAR", kriptolar),
         ("🇺🇸 TÜM PİYASA - DİKKAT ÇEKEN ABD HİSSELERİ", abd),
         ("🇪🇺 TÜM PİYASA - DİKKAT ÇEKEN AVRUPA HİSSELERİ", avrupa),
@@ -236,6 +223,22 @@ def tum_piyasa_analizi_gonder():
             telegram_mesaj_gonder(mesaj)
             time.sleep(1)
 
+def komut_listesini_gonder():
+    yardim_mesaji = (
+        "🤖 *PİYASA ANALİZ BOTU - KOMUT LİSTESİ*\n\n"
+        "Aşağıdaki komutları büyük veya küçük harfle yazarak kullanabilirsin:\n\n"
+        "📊 *1. Tekil Varlık Analizi*\n"
+        "• `analiz [kod]` veya `/analiz [kod]`\n"
+        "  _Örnekler:_ `analiz thyao`, `analiz btc`, `analiz aapl`, `analiz spy`\n\n"
+        "🔥 *2. Piyasa Taraması & Özetler*\n"
+        "• `dikkat`, `dikkat çekenler`, `özel`, `ozet`, `tüm piyasa analizi`\n"
+        "  _Açıklama:_ Tüm borsa, kripto ve ETF listelerini tarayarak kritik seviyedeki varlıkları listeler.\n\n"
+        "ℹ️ *3. Yardım Menüsü*\n"
+        "• `komutlar` veya `/komutlar`\n"
+        "  _Açıklama:_ Bu yardım menüsünü ekrana getirir."
+    )
+    telegram_mesaj_gonder(yardim_mesaji)
+
 def komutlari_kontrol_et():
     global last_update_id
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates?offset={last_update_id + 1}&timeout=1"
@@ -252,11 +255,22 @@ def komutlari_kontrol_et():
                     continue
                     
                 text = message.get("text", "").strip()
+                text_lower = text.lower()
                 text_upper = text.upper()
                 
-                if "TÜM PİYASA ANALİZİ" in text_upper or text_upper in ["DIKKAT", "DİKKAT", "ÖZET", "OZET"]:
+                # Tüm piyasa / özet tetikleyicileri (küçük veya büyük harf duyarsız)
+                piyasa_tetikleyicileri = [
+                    "dikkat", "dikkat çekenler", "dikkat cekenter", "özel", "ozet", "özet", "tüm piyasa analizi", "tum piyasa analizi"
+                ]
+                
+                if any(tetik in text_lower for tetik in piyasa_tetikleyicileri):
                     tum_piyasa_analizi_gonder()
                 
+                # Komut listesi / yardım tetikleyicileri
+                elif text_lower in ["komutlar", "/komutlar", "yardim", "/yardim", "help", "/help"]:
+                    komut_listesini_gonder()
+                
+                # Tekil analiz tetikleyicileri
                 elif text_upper.startswith("ANALİZ") or text_upper.startswith("ANALIZ") or text_upper.startswith("/ANALIZ"):
                     parcalar = text.split()
                     if len(parcalar) > 1:
@@ -264,12 +278,12 @@ def komutlari_kontrol_et():
                         telegram_mesaj_gonder(f"⏳ `{kod.upper()}` için detaylı analiz hesaplanıyor...")
                         telegram_mesaj_gonder(evrensel_analiz_et(kod))
                     else:
-                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `analiz thf`, `analiz tly`, `analiz thyao`")
+                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `analiz thyao`, `analiz btc`, `analiz aapl`")
     except Exception as e:
         print(f"Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot fon eşleme filtresiyle aktif!")
+    print("Bot küçük/büyük harf esnekliği ve komut listesiyle aktif!")
     while True:
         komutlari_kontrol_et()
         time.sleep(10)

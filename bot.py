@@ -25,8 +25,8 @@ def telegram_mesaj_gonder(mesaj):
     }
     try:
         requests.post(url, json=payload, timeout=10)
-        # Sinyallerin Telegram'a 15 saniye arayla akması için bekleme süresi
-        time.sleep(15)
+        # Sinyallerin Telegram'a 10 saniye arayla akması için bekleme süresi
+        time.sleep(10)
     except Exception as e:
         print(f"Telegram hatası: {e}")
 

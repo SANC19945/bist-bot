@@ -2,7 +2,7 @@ name: BIST Sinyal Botu
 
 on:
   schedule:
-    - cron: '0 */2 * * *' # Her 2 saatte bir otomatik çalışır
+    - cron: '*/5 * * * *' # Artık her 5 dakikada bir çalışacak
   workflow_dispatch: # İstediğin zaman manuel çalıştırabilmen için tuş
 
 jobs:

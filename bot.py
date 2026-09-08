@@ -23,6 +23,8 @@ ISIM_SOZLUGU = {
     "SHEL.L": "Shell plc (İngiltere - FTSE)", "HSBA.L": "HSBC Holdings (İngiltere - FTSE)"
 }
 
+last_update_id = 0
+
 def get_turkey_time():
     tr_tz = timezone(timedelta(hours=3))
     return datetime.now(tr_tz)
@@ -88,6 +90,7 @@ def teknik_indikatorleri_hesapla(df):
     return df
 
 def hisse_tara_ve_gonder(hisse_listesi, kategori_adi, para_birimi):
+    bulunan = 0
     for hisse in hisse_listesi:
         try:
             df = yf.download(hisse, period="2mo", interval="1d", progress=False)
@@ -128,7 +131,8 @@ def hisse_tara_ve_gonder(hisse_listesi, kategori_adi, para_birimi):
                     f"🕒 *Zaman:* `{su_anki_zaman}`"
                 )
                 telegram_mesaj_gonder(mesaj)
-                time.sleep(15) # Sinyaller arası 15 saniye bekleme
+                time.sleep(15)
+                bulunan += 1
 
             elif dunku_ema9 >= dunku_ema21 and bugunku_ema9 < bugunku_ema21:
                 mesaj = (
@@ -143,25 +147,58 @@ def hisse_tara_ve_gonder(hisse_listesi, kategori_adi, para_birimi):
                     f"🕒 *Zaman:* `{su_anki_zaman}`"
                 )
                 telegram_mesaj_gonder(mesaj)
-                time.sleep(15) # Sinyaller arası 15 saniye bekleme
+                time.sleep(15)
+                bulunan += 1
         except Exception:
             pass
+    return bulunan
+
+def komutlari_kontrol_et():
+    global last_update_id
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates?offset={last_update_id + 1}&timeout=1"
+    try:
+        response = requests.get(url, timeout=5)
+        data = response.json()
+        if data.get("ok"):
+            bist, abd, avrupa = piyasa_listelerini_getir()
+            for result in data.get("result", []):
+                last_update_id = result["update_id"]
+                message = result.get("message", {})
+                chat_id = str(message.get("chat", {}).get("id"))
+                
+                if chat_id != TELEGRAM_CHAT_ID:
+                    continue
+                    
+                text = message.get("text", "").strip().upper()
+                
+                if text in ["/BIST", "BIST"]:
+                    telegram_mesaj_gonder("🔍 *BIST 100* manuel taraması başlatıldı...")
+                    adet = hisse_tara_ve_gonder(bist, "BIST 100", "TL")
+                    telegram_mesaj_gonder(f"✅ *BIST 100* taraması bitti. Bulunan sinyal: {adet}")
+                    
+                elif text in ["/ABD", "ABD"]:
+                    telegram_mesaj_gonder("🔍 *ABD BORSALARI* manuel taraması başlatıldı...")
+                    adet = hisse_tara_ve_gonder(abd, "ABD BORSALARI", "$")
+                    telegram_mesaj_gonder(f"✅ *ABD BORSALARI* taraması bitti. Bulunan sinyal: {adet}")
+                    
+                elif text in ["/AVRUPA", "AVRUPA"]:
+                    telegram_mesaj_gonder("🔍 *AVRUPA BORSALARI* manuel taraması başlatıldı...")
+                    adet = hisse_tara_ve_gonder(avrupa, "AVRUPA BORSALARI", "€ / £")
+                    telegram_mesaj_gonder(f"✅ *AVRUPA BORSALARI* taraması bitti. Bulunan sinyal: {adet}")
+                    
+                elif text in ["/TUMU", "TÜMÜ", "TUM"]:
+                    telegram_mesaj_gonder("🔍 Tüm piyasalar için kapsamlı tarama başlatıldı...")
+                    s1 = hisse_tara_ve_gonder(bist, "BIST 100", "TL")
+                    s2 = hisse_tara_ve_gonder(abd, "ABD BORSALARI", "$")
+                    s3 = hisse_tara_ve_gonder(avrupa, "AVRUPA BORSALARI", "€ / £")
+                    telegram_mesaj_gonder(f"✅ Tüm taramalar tamamlandı. Toplam sinyal: {s1 + s2 + s3}")
+    except Exception as e:
+        print(f"Komut okuma hatası: {e}")
 
 if __name__ == "__main__":
-    bist, abd, avrupa = piyasa_listelerini_getir()
-    print("Bot sürekli çalışma modunda başlatıldı (15 saniye döngülü)...")
+    print("Bot komut dinleme modunda aktif! Telegram'dan BIST, ABD veya AVRUPA yazarak tarama başlatabilirsin.")
+    telegram_mesaj_gonder("🤖 *Bot Aktif!* Komut bekliyor...\n\nKomutlar:\n🔹 `BIST` veya `/bist`\n🔹 `ABD` veya `/abd`\n🔹 `AVRUPA` veya `/avrupa`\n🔹 `TÜMÜ` veya `/tumu`")
+    
     while True:
-        try:
-            tr_zaman = get_turkey_time().strftime('%H:%M:%S')
-            print(f"[{tr_zaman}] Yeni döngü taraması başlatılıyor...")
-            
-            hisse_tara_ve_gonder(bist, "BIST 100", "TL")
-            hisse_tara_ve_gonder(abd, "ABD BORSALARI", "$")
-            hisse_tara_ve_gonder(avrupa, "AVRUPA BORSALARI", "€ / £")
-            
-            print("Döngü tamamlandı. Sonraki tarama için bekleniyor...")
-        except Exception as e:
-            print(f"Hata oluştu: {e}")
-        
-        # Döngüler arası bekleme
-        time.sleep(15)
+        komutlari_kontrol_et()
+        time.sleep(10) # Her 10 saniyede bir yeni komut var mı diye kontrol eder

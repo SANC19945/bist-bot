@@ -16,14 +16,13 @@ ISIM_SOZLUGU = {
     # ABD Hisseleri & ETF
     "AAPL": "Apple Inc. (ABD)", "MSFT": "Microsoft Corp. (ABD)", "NVDA": "NVIDIA Corp. (ABD)",
     "TSLA": "Tesla Inc. (ABD)", "AMZN": "Amazon.com (ABD)", "GOOGL": "Alphabet / Google (ABD)",
-    "META": "Meta Platforms (ABD)", "NFLX": "Netflix Inc. (ABD)", "AMD": "AMD (ABD)",
+    "META": "Meta Platforms (ABD)", "NFLX": "Netflix Inc. (ABD)", "AMD": "AMD (ABD)", "PLTR": "Palantir Tech (ABD)",
     "SPY": "SPDR S&P 500 ETF (ABD)", "QQQ": "Invesco QQQ Trust (ABD)", "VOO": "Vanguard S&P 500 ETF",
     "GLD": "SPDR Gold Shares (Altın ETF)", "SLV": "iShares Silver Trust (Gümüş ETF)",
-    # Yerli Fonlar (TEFAS Örnek Kodları)
-    "TTE.IS": "İş Portföy BIST 100 Dışı Şirketler Hisse Senedi Fonu",
-    "MAC.IS": "Marmara Capital Hisse Senedi Fonu",
-    "TI2.IS": "İş Portföy Teknoloji Sektörleri Hisse Senedi Fonu",
-    "IDH.IS": "İstanbul Portföy Birinci Hisse Senedi Fonu",
+    # Yerli Fonlar (TEFAS)
+    "MAC.IS": "Marmara Capital Hisse Senedi Fonu", "TTE.IS": "İş Portföy BIST 100 Dışı Şirketler Fonu",
+    "TI2.IS": "İş Portföy Teknoloji Sektörleri Fonu", "IDH.IS": "İstanbul Portföy Birinci Hisse Fonu",
+    "MAC": "Marmara Capital Hisse Senedi Fonu", "TTE": "İş Portföy BIST 100 Dışı Şirketler Fonu",
     # Avrupa
     "SAP.DE": "SAP SE (Almanya)", "SIE.DE": "Siemens AG (Almanya)", "AIR.PA": "Airbus SE (Fransa)"
 }
@@ -66,7 +65,7 @@ def piyasa_listelerini_getir():
         "SPY", "QQQ", "VOO", "ARKK", "GLD", "SLV", "TLT"
     ]
     yerli_fonlar = [
-        "TTE.IS", "MAC.IS", "TI2.IS", "IDH.IS"
+        "MAC.IS", "TTE.IS", "TI2.IS", "IDH.IS"
     ]
     kriptolar = [
         "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "AVAX-USD", "DOGE-USD", "NEAR-USD"
@@ -99,17 +98,14 @@ def teknik_indikatorleri_hesapla(df):
 def evrensel_hisse_bul(hisse_kodu):
     code = hisse_kodu.upper().strip()
     
-    # Kripto kısayolu (Örn: BTC -> BTC-USD)
-    if not "-" in code and not "." in code and len(code) <= 5 and code not in ["THYAO", "GARAN", "ASELS", "SASA"]:
-        # Önce kripto olarak deneyebiliriz veya doğrudan ekleme yapabiliriz
-        pass
+    # Olası uzantı kombinasyonları (Kripto, BIST Hisse, Fon, Yabancı)
+    adaylar = [
+        code,
+        code + "-USD",
+        code + ".IS",
+        code + ".TEFAS"
+    ]
     
-    adaylar = [code]
-    if not "." in code and not "-" in code:
-        adaylar = [code + ".IS", code + "-USD", code]
-    elif code in ["BTC", "ETH", "SOL", "XRP", "AVAX", "DOGE", "BNB"]:
-        adaylar = [code + "-USD"]
-        
     for aday in adaylar:
         try:
             df_test = yf.download(aday, period="5d", progress=False)
@@ -124,8 +120,8 @@ def evrensel_analiz_et(hisse_kodu):
 
     try:
         df = yf.download(symbol, period="3mo", interval="1d", progress=False)
-        if df.empty or len(df) < 30:
-            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Sembolü kontrol edin."
+        if df.empty or len(df) < 15:
+            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Kodu kontrol edin (Örn: `THYAO`, `ETH`, `MAC`, `AAPL`)."
         
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -141,7 +137,7 @@ def evrensel_analiz_et(hisse_kodu):
         bb_upper = float(df['BB_Upper'].iloc[-1])
         bb_lower = float(df['BB_Lower'].iloc[-1])
         
-        temiz_isim = ISIM_SOZLUGU.get(symbol, symbol)
+        temiz_isim = ISIM_SOZLUGU.get(symbol, ISIM_SOZLUGU.get(hisse_kodu.upper(), symbol))
         su_anki_zaman = get_turkey_time().strftime('%d.%m.%Y %H:%M')
 
         trend_pozitif = bugunku_ema9 > bugunku_ema21
@@ -189,26 +185,26 @@ def evrensel_analiz_et(hisse_kodu):
     except Exception as e:
         return f"⚠️ Analiz hatası: `{str(e)}`"
 
-def dikkat_cekenleri_bul_ve_gonder():
+def tum_piyasa_analizi_gonder():
     bist, abd, avrupa, etf, fonlar, kriptolar = piyasa_listelerini_getir()
     
     kategoriler = [
         ("🇹🇷 DİKKAT ÇEKEN YERLİ HİSSELER", bist),
+        ("fond DİKKAT ÇEKEN YERLİ FONLAR", fonlar),
+        ("🪙 DİKKAT ÇEKEN KRİPTOLAR", kriptolar),
         ("🇺🇸 DİKKAT ÇEKEN YABANCI ABD HİSSELERİ", abd),
         ("🇪🇺 DİKKAT ÇEKEN AVRUPA BORSASI HİSSELERİ", avrupa),
-        ("📊 DİKKAT ÇEKEN ETF'LER", etf),
-        ("fond DİKKAT ÇEKEN YERLİ FONLAR", fonlar),
-        ("🪙 DİKKAT ÇEKEN KRİPTOLAR", kriptolar)
+        ("📊 DİKKAT ÇEKEN ETF'LER", etf)
     ]
     
-    telegram_mesaj_gonder("🔎 *Piyasalar taranıyor, dikkat çeken varlıklar derleniyor...*")
+    telegram_mesaj_gonder("🔎 *Tüm Piyasalar taranıyor, dikkat çeken varlıklar derleniyor...*")
     
     for baslik, liste in kategoriler:
         secilenler = []
         for kod in liste:
             try:
                 df = yf.download(kod, period="1mo", interval="1d", progress=False)
-                if df.empty or len(df) < 15:
+                if df.empty or len(df) < 10:
                     continue
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
@@ -218,12 +214,11 @@ def dikkat_cekenleri_bul_ve_gonder():
                 rsi = float(df['RSI'].iloc[-1])
                 degisim = ((float(df['Close'].iloc[-1]) - float(df['Close'].iloc[-2])) / float(df['Close'].iloc[-2])) * 100
                 
-                # Dikkat çeken kriteri: Ya RSI hareketli ya da günlük değişimi yüksek/hacimli
-                if rsi > 60 or rsi < 40 or abs(degisim) > 2.0:
+                if rsi > 60 or rsi < 40 or abs(degisim) > 1.5:
                     temiz_ad = ISIM_SOZLUGU.get(kod, kod.replace(".IS", "").replace("-USD", ""))
                     durum_ikonu = "🔥" if abs(degisim) > 3 else ("🟢" if rsi > 50 else "💡")
                     secilenler.append(f"{durum_ikonu} `{temiz_ad}` | Fiyat: {fiyat:,.2f} | Günlük: %{degisim:+.2f} | RSI: {rsi:.1f}")
-                    if len(secilenler) >= 3: # Her kategoriden en fazla 3 dikkat çeken
+                    if len(secilenler) >= 3:
                         break
             except:
                 continue
@@ -251,41 +246,33 @@ def komutlari_kontrol_et():
                 text = message.get("text", "").strip()
                 text_upper = text.upper()
                 
-                if text_upper.startswith("ANALİZ") or text_upper.startswith("/ANALIZ"):
+                # TÜM PİYASA ANALİZİ KOMUTU
+                if "TÜM PİYASA ANALİZİ" in text_upper or text_upper in ["DIKKAT", "DİKKAT", "ÖZET", "OZET"]:
+                    tum_piyasa_analizi_gonder()
+                
+                # EVRENSEL ANALİZ KOMUTU (ANALİZ [KOD])
+                elif text_upper.startswith("ANALİZ") or text_upper.startswith("/ANALIZ"):
                     parcalar = text.split()
                     if len(parcalar) > 1:
                         kod = parcalar[1]
-                        telegram_mesaj_gonder(f"⏳ `{kod.upper()}` için analiz hesaplanıyor...")
+                        telegram_mesaj_gonder(f"⏳ `{kod.upper()}` için detaylı analiz hesaplanıyor...")
                         telegram_mesaj_gonder(evrensel_analiz_et(kod))
                     else:
-                        telegram_mesaj_gonder("⚠️ Örnek: `ANALİZ THYAO`, `ANALİZ BTC`, `ANALİZ AAPL`")
-                
-                elif text_upper.startswith("KRIPTO") or text_upper.startswith("/KRIPTO"):
-                    parcalar = text.split()
-                    if len(parcalar) > 1:
-                        kripto = parcalar[1]
-                        if not "-" in kripto:
-                            kripto += "-USD"
-                        telegram_mesaj_gonder(f"⏳ `{kripto.upper()}` kripto analizi yapılıyor...")
-                        telegram_mesaj_gonder(evrensel_analiz_et(kripto))
-                    else:
-                        telegram_mesaj_gonder("⚠️ Örnek: `KRİPTO BTC` veya `KRİPTO ETH`")
-
-                elif text_upper in ["ÖZET", "OZET", "DİKKAT", "DIKKAT", "/DIKKAT"]:
-                    dikkat_cekenleri_bul_ve_gonder()
-                    
+                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `ANALİZ THYAO`, `ANALİZ ETH`, `ANALİZ MAC`, `ANALİZ AAPL`")
     except Exception as e:
         print(f"Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot Kripto ve Dikkat Çekenler modülleriyle aktif!")
+    print("Bot tam entegre evrensel analiz moduyla aktif!")
     telegram_mesaj_gonder(
-        "🤖 *Bot Güncellendi (Kripto & Dikkat Çekenler Eklendi)* \n\n"
-        "Artık kriptoları analiz edebilir ve tüm piyasaların gözde varlıklarını tek komutla listeleyebilirsin!\n\n"
-        "📌 *Yeni Komutlar:*\n"
-        "🔹 `ANALİZ BTC` veya `KRİPTO ETH`\n"
-        "🔹 `ANALİZ THYAO`, `ANALİZ AAPL`\n"
-        "🔹 `DİKKAT` (Tüm kategorilerdeki dikkat çekenleri listeler)"
+        "🤖 *Bot Güncellendi (Evrensel Analiz & Tüm Piyasa Analizi)* \n\n"
+        "Artık `ANALİZ` yazıp arkasından **ne yazarsan yaz** (Kripto, Fon, BIST, ABD vb.) sistem anında detaylı analiz ve karar verir!\n\n"
+        "📌 *Örnek Komutlar:*\n"
+        "🔹 `ANALİZ THYAO` (Yerli Hisse)\n"
+        "🔹 `ANALİZ ETH` veya `ANALİZ BTC-USD` (Kripto)\n"
+        "🔹 `ANALİZ MAC` (Yerli Fon)\n"
+        "🔹 `ANALİZ AAPL` (ABD Hissesi)\n"
+        "🔹 `Tüm Piyasa Analizi` (Tüm kategorilerdeki gözde varlıkları listeler)"
     )
     
     while True:

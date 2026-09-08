@@ -1,11 +1,17 @@
 import os
+import time
 import requests
 import yfinance as yf
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 TELEGRAM_BOT_TOKEN = "8616876708:AAEJ7eAubBOcW4VW7EO7Rixpx-qnevZS1bU"
 TELEGRAM_CHAT_ID = "906997340"
+
+def get_turkey_time():
+    # UTC saatine 3 saat ekleyerek tam Türkiye saatini alıyoruz
+    tr_tz = timezone(timedelta(hours=3))
+    return datetime.now(tr_tz)
 
 def telegram_mesaj_gonder(mesaj):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -19,6 +25,8 @@ def telegram_mesaj_gonder(mesaj):
     }
     try:
         requests.post(url, json=payload, timeout=10)
+        # Sinyallerin Telegram'a 15 saniye arayla akması için bekleme süresi
+        time.sleep(15)
     except Exception as e:
         print(f"Telegram hatası: {e}")
 
@@ -48,28 +56,22 @@ def piyasa_listelerini_getir():
     return bist_hisseleri, abd_hisseleri, avrupa_hisseleri
 
 def teknik_indikatorleri_hesapla(df):
-    # 1. SMA (5 ve 10)
     df['SMA5'] = df['Close'].rolling(window=5).mean()
     df['SMA10'] = df['Close'].rolling(window=10).mean()
-    
-    # 2. EMA (9 ve 21)
     df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
     df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
     
-    # 3. RSI (14)
     delta = df['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
-    # 4. MACD (12, 26, 9)
     exp1 = df['Close'].ewm(span=12, adjust=False).mean()
     exp2 = df['Close'].ewm(span=26, adjust=False).mean()
     df['MACD'] = exp1 - exp2
     df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
     
-    # 5. Bollinger Bands (20, 2)
     df['BB_Middle'] = df['Close'].rolling(window=20).mean()
     std = df['Close'].rolling(window=20).std()
     df['BB_Upper'] = df['BB_Middle'] + (std * 2)
@@ -92,10 +94,8 @@ def hisse_tara_ve_gonder(hisse_listesi, kategori_adi, para_birimi):
             son_fiyat = float(df['Close'].iloc[-1])
             rsi_deger = float(df['RSI'].iloc[-1])
             
-            # Kesişim kontrolü (EMA 9 ve EMA 21 ana tetikleyici olarak alındı)
             dunku_ema9 = float(df['EMA9'].iloc[-2])
             bugunku_ema9 = float(df['EMA9'].iloc[-1])
-            dunku_ema21 = float(df['EMA21'].iloc[-1] if 'EMA21' in df else df['EMA21'].iloc[-2]) # Güvenli index
             dunku_ema21 = float(df['EMA21'].iloc[-2])
             bugunku_ema21 = float(df['EMA21'].iloc[-1])
 
@@ -105,41 +105,37 @@ def hisse_tara_ve_gonder(hisse_listesi, kategori_adi, para_birimi):
             bb_lower = float(df['BB_Lower'].iloc[-1])
             
             temiz_isim = hisse.replace(".IS", "").replace(".DE", " (Almanya)").replace(".PA", " (Fransa)").replace(".L", " (İngiltere)")
+            su_anki_zaman = get_turkey_time().strftime('%d.%m.%Y %H:%M')
 
-            # Al Sinyali (EMA 9 yukarı kesiyor ve MACD pozitif/kesişimde)
+            # Al Sinyali
             if dunku_ema9 <= dunku_ema21 and bugunku_ema9 > bugunku_ema21:
-                trend_durumu = "Güçlü Boğa (Alım Fırsatı)"
                 risk_skoru = "Düşük" if rsi_deger < 60 else "Orta (Aşırı Alım Sınırı)"
-                
                 mesaj = (
                     f"🟢 *{kategori_adi} - ÇOKLU İNDİKATÖR AL SİNYALİ*\n\n"
                     f"🏢 *Varlık:* `{temiz_isim}`\n"
                     f"💰 *Fiyat:* `{son_fiyat:.2f} {para_birimi}`\n"
                     f"📈 *EMA Kesişimi:* EMA9 / EMA21 Yukarı Kesti\n"
-                    f"⚡ *MACD Durumu:* `{'Pozitif (Alım Yönlü)' if macd_val > macd_sig else 'Nötr'}`\n"
+                    f"⚡ *MACD Durumu:* `{'Pozitif' if macd_val > macd_sig else 'Nötr'}`\n"
                     f"📊 *RSI (14):* `{rsi_deger:.1f}`\n"
-                    f"📉 *Bollinger Konumu:* `{'Alt Banda Yakın (Tepki)' if son_fiyat <= bb_lower * 1.02 else 'Normal Band İçinde'}`\n"
+                    f"📉 *Bollinger Konumu:* `{'Alt Banda Yakın' if son_fiyat <= bb_lower * 1.02 else 'Normal Band'}`\n"
                     f"⚖️ *Risk Skoru:* `{risk_skoru}`\n"
-                    f"🕒 *Zaman:* `{datetime.now().strftime('%d.%m.%Y %H:%M')}`"
+                    f"🕒 *Zaman:* `{su_anki_zaman}`"
                 )
                 telegram_mesaj_gonder(mesaj)
                 bulunan_sinyaller += 1
 
-            # Sat Sinyali (EMA 9 aşağı kesiyor)
+            # Sat Sinyali
             elif dunku_ema9 >= dunku_ema21 and bugunku_ema9 < bugunku_ema21:
-                trend_durumu = "Ayı Eğilimi (Satış Baskısı)"
-                risk_skoru = "Yüksek"
-                
                 mesaj = (
                     f"🔴 *{kategori_adi} - ÇOKLU İNDİKATÖR SAT SİNYALİ*\n\n"
                     f"🏢 *Varlık:* `{temiz_isim}`\n"
                     f"💰 *Fiyat:* `{son_fiyat:.2f} {para_birimi}`\n"
                     f"📉 *EMA Kesişimi:* EMA9 / EMA21 Aşağı Kesti\n"
-                    f"⚡ *MACD Durumu:* `{'Negatif (Satış Yönlü)' if macd_val < macd_sig else 'Nötr'}`\n"
+                    f"⚡ *MACD Durumu:* `{'Negatif' if macd_val < macd_sig else 'Nötr'}`\n"
                     f"📊 *RSI (14):* `{rsi_deger:.1f}`\n"
-                    f"📈 *Bollinger Konumu:* `{'Üst Banda Çarptı (Doygunluk)' if son_fiyat >= bb_upper * 0.98 else 'Normal Band İçinde'}`\n"
-                    f"⚖️ *Risk Skoru:* `{risk_skoru}`\n"
-                    f"🕒 *Zaman:* `{datetime.now().strftime('%d.%m.%Y %H:%M')}`"
+                    f"📈 *Bollinger Konumu:* `{'Üst Banda Çarptı' if son_fiyat >= bb_upper * 0.98 else 'Normal Band'}`\n"
+                    f"⚖️ *Risk Skoru:* `Yüksek`\n"
+                    f"🕒 *Zaman:* `{su_anki_zaman}`"
                 )
                 telegram_mesaj_gonder(mesaj)
                 bulunan_sinyaller += 1
@@ -148,15 +144,15 @@ def hisse_tara_ve_gonder(hisse_listesi, kategori_adi, para_birimi):
     return bulunan_sinyaller
 
 def tum_piyasalari_tara():
-    bist, abd, avrupa = piyasa_listelerini_getir()
-    toplam_hisse = len(bist) + len(abd) + len(avrupa)
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Kapsamlı indikatör taraması başladı. Varlık sayısı: {toplam_hisse}")
+    tr_zaman = get_turkey_time().strftime('%H:%M:%S')
+    print(f"[{tr_zaman}] Kapsamlı tarama başladı.")
     
+    bist, abd, avrupa = piyasa_listelerini_getir()
     s_bist = hisse_tara_ve_gonder(bist, "BIST 100", "TL")
     s_abd = hisse_tara_ve_gonder(abd, "ABD BORSALARI", "$")
     s_avrupa = hisse_tara_ve_gonder(avrupa, "AVRUPA BORSALARI", "€ / £")
     
-    print(f"Tarama bitti. İletilen toplam sinyal: {s_bist + s_abd + s_avrupa}")
+    print(f"Tarama bitti. Toplam sinyal: {s_bist + s_abd + s_avrupa}")
 
 if __name__ == "__main__":
     tum_piyasalari_tara()

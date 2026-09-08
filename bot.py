@@ -27,7 +27,6 @@ ISIM_SOZLUGU = {
     "SAP.DE": "SAP SE (Almanya)", "SIE.DE": "Siemens AG (Almanya)", "AIR.PA": "Airbus SE (Fransa)"
 }
 
-# Bilinen kripto sembolleri listesi (Yanlış eşleşmeyi önlemek için)
 KRIPTO_LISTESI = ["BTC", "ETH", "SOL", "XRP", "AVAX", "DOGE", "BNB", "ADA", "NEAR", "COIN"]
 
 last_update_id = 0
@@ -101,10 +100,9 @@ def teknik_indikatorleri_hesapla(df):
 def evrensel_hisse_bul(hisse_kodu):
     code = hisse_kodu.upper().strip()
     
-    # Eğer girilen kod bir kripto ise doğrudan -USD uzantısını önceliklendir
     if code in KRIPTO_LISTESI or code.replace("-USD", "") in KRIPTO_LISTESI:
-        temiz_ kripto = code.replace("-USD", "")
-        return temiz_ kripto + "-USD"
+        temiz_kripto = code.replace("-USD", "")
+        return temiz_kripto + "-USD"
 
     adaylar = [
         code,
@@ -128,7 +126,7 @@ def evrensel_analiz_et(hisse_kodu):
     try:
         df = yf.download(symbol, period="3mo", interval="1d", progress=False)
         if df.empty or len(df) < 15:
-            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Kodu kontrol edin (Örn: `thyao`, `eth`, `mac`, `aapl`)."
+            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Kodu kontrol edin (Örn: `thyao`, `btc`, `mac`, `aapl`)."
         
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -179,7 +177,7 @@ def evrensel_analiz_et(hisse_kodu):
             f"💰 *Güncel Fiyat:* `{son_fiyat:,.2f}`\n"
             f"📌 *NET KARAR:* `{tavsiye}`\n"
             f"----------------------------------\n"
-            f"📈 *Trend Trendi:* `{trend}`\n"
+            f"📈 *Trend Durumu:* `{trend}`\n"
             f"⚡ *EMA Kesişimi:* `{'EMA9 > EMA21 (Pozitif)' if trend_pozitif else 'EMA9 < EMA21 (Negatif)'}`\n"
             f"📊 *RSI (14):* `{rsi_deger:.1f} ({rsi_durum})`\n"
             f"📉 *MACD:* `{'Pozitif / Güçlü' if macd_val > macd_sig else 'Negatif / Zayıf'}`\n"
@@ -252,11 +250,9 @@ def komutlari_kontrol_et():
                 text = message.get("text", "").strip()
                 text_upper = text.upper()
                 
-                # TÜM PİYASA ANALİZİ KOMUTU
                 if "TÜM PİYASA ANALİZİ" in text_upper or text_upper in ["DIKKAT", "DİKKAT", "ÖZET", "OZET"]:
                     tum_piyasa_analizi_gonder()
                 
-                # EVRENSEL ANALİZ KOMUTU
                 elif text_upper.startswith("ANALİZ") or text_upper.startswith("ANALIZ") or text_upper.startswith("/ANALIZ"):
                     parcalar = text.split()
                     if len(parcalar) > 1:
@@ -264,12 +260,12 @@ def komutlari_kontrol_et():
                         telegram_mesaj_gonder(f"⏳ `{kod.upper()}` için detaylı analiz hesaplanıyor...")
                         telegram_mesaj_gonder(evrensel_analiz_et(kod))
                     else:
-                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `analiz thyao`, `Analiz btc`, `analiz mac`")
+                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `analiz thyao`, `analiz btc`, `analiz mac`")
     except Exception as e:
         print(f"Hata: {e}")
 
 if __name__ == "__main__":
-    print("Bot kripto doğrulama filtresiyle aktif!")
+    print("Bot hatasız ve aktif!")
     while True:
         komutlari_kontrol_et()
         time.sleep(10)

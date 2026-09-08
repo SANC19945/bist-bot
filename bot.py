@@ -98,7 +98,6 @@ def teknik_indikatorleri_hesapla(df):
 def evrensel_hisse_bul(hisse_kodu):
     code = hisse_kodu.upper().strip()
     
-    # Olası uzantı kombinasyonları (Kripto, BIST Hisse, Fon, Yabancı)
     adaylar = [
         code,
         code + "-USD",
@@ -121,7 +120,7 @@ def evrensel_analiz_et(hisse_kodu):
     try:
         df = yf.download(symbol, period="3mo", interval="1d", progress=False)
         if df.empty or len(df) < 15:
-            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Kodu kontrol edin (Örn: `THYAO`, `ETH`, `MAC`, `AAPL`)."
+            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Kodu kontrol edin (Örn: `thyao`, `eth`, `mac`, `aapl`)."
         
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -150,7 +149,6 @@ def evrensel_analiz_et(hisse_kodu):
         else:
             rsi_durum = "Normal Bantta 📊"
 
-        # NET KARAR (AL / SAT / TUT / UZAK DUR)
         if trend_pozitif and rsi_deger <= 65 and macd_val > macd_sig:
             tavsiye = "GÜÇLÜ AL 🟢 (Yükseliş Trendi & Destekli)"
             risk = "Düşük / Orta"
@@ -173,7 +171,7 @@ def evrensel_analiz_et(hisse_kodu):
             f"💰 *Güncel Fiyat:* `{son_fiyat:,.2f}`\n"
             f"📌 *NET KARAR:* `{tavsiye}`\n"
             f"----------------------------------\n"
-            f"📈 *Trend Durumu:* `{trend}`\n"
+            f"📈 *Trend Trendi:* `{trend}`\n"
             f"⚡ *EMA Kesişimi:* `{'EMA9 > EMA21 (Pozitif)' if trend_pozitif else 'EMA9 < EMA21 (Negatif)'}`\n"
             f"📊 *RSI (14):* `{rsi_deger:.1f} ({rsi_durum})`\n"
             f"📉 *MACD:* `{'Pozitif / Güçlü' if macd_val > macd_sig else 'Negatif / Zayıf'}`\n"
@@ -189,12 +187,12 @@ def tum_piyasa_analizi_gonder():
     bist, abd, avrupa, etf, fonlar, kriptolar = piyasa_listelerini_getir()
     
     kategoriler = [
-        ("🇹🇷 DİKKAT ÇEKEN YERLİ HİSSELER", bist),
-        ("fond DİKKAT ÇEKEN YERLİ FONLAR", fonlar),
-        ("🪙 DİKKAT ÇEKEN KRİPTOLAR", kriptolar),
-        ("🇺🇸 DİKKAT ÇEKEN YABANCI ABD HİSSELERİ", abd),
-        ("🇪🇺 DİKKAT ÇEKEN AVRUPA BORSASI HİSSELERİ", avrupa),
-        ("📊 DİKKAT ÇEKEN ETF'LER", etf)
+        ("🇹🇷 TÜM PİYASA - DİKKAT ÇEKEN YERLİ HİSSELER", bist),
+        ("fond TÜM PİYASA - DİKKAT ÇEKEN YERLİ FONLAR", fonlar),
+        ("🪙 TÜM PİYASA - DİKKAT ÇEKEN KRİPTOLAR", kriptolar),
+        ("🇺🇸 TÜM PİYASA - DİKKAT ÇEKEN ABD HİSSELERİ", abd),
+        ("🇪🇺 TÜM PİYASA - DİKKAT ÇEKEN AVRUPA HİSSELERİ", avrupa),
+        ("📊 TÜM PİYASA - DİKKAT ÇEKEN ETF'LER", etf)
     ]
     
     telegram_mesaj_gonder("🔎 *Tüm Piyasalar taranıyor, dikkat çeken varlıklar derleniyor...*")
@@ -250,28 +248,28 @@ def komutlari_kontrol_et():
                 if "TÜM PİYASA ANALİZİ" in text_upper or text_upper in ["DIKKAT", "DİKKAT", "ÖZET", "OZET"]:
                     tum_piyasa_analizi_gonder()
                 
-                # EVRENSEL ANALİZ KOMUTU (ANALİZ [KOD])
-                elif text_upper.startswith("ANALİZ") or text_upper.startswith("/ANALIZ"):
+                # EVRENSEL ANALİZ KOMUTU (Küçük/Büyük Harf Bağımsız: analiz, Analiz, ANALİZ, /analiz vb.)
+                elif text_upper.startswith("ANALİZ") or text_upper.startswith("ANALIZ") or text_upper.startswith("/ANALIZ"):
                     parcalar = text.split()
                     if len(parcalar) > 1:
                         kod = parcalar[1]
                         telegram_mesaj_gonder(f"⏳ `{kod.upper()}` için detaylı analiz hesaplanıyor...")
                         telegram_mesaj_gonder(evrensel_analiz_et(kod))
                     else:
-                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `ANALİZ THYAO`, `ANALİZ ETH`, `ANALİZ MAC`, `ANALİZ AAPL`")
+                        telegram_mesaj_gonder("⚠️ Lütfen bir varlık kodu belirtin.\nÖrnek: `analiz thyao`, `Analiz eth`, `ANALİZ mac`, `analiz aapl`")
     except Exception as e:
         print(f"Hata: {e}")
 
 if __name__ == "__main__":
     print("Bot tam entegre evrensel analiz moduyla aktif!")
     telegram_mesaj_gonder(
-        "🤖 *Bot Güncellendi (Evrensel Analiz & Tüm Piyasa Analizi)* \n\n"
-        "Artık `ANALİZ` yazıp arkasından **ne yazarsan yaz** (Kripto, Fon, BIST, ABD vb.) sistem anında detaylı analiz ve karar verir!\n\n"
-        "📌 *Örnek Komutlar:*\n"
-        "🔹 `ANALİZ THYAO` (Yerli Hisse)\n"
-        "🔹 `ANALİZ ETH` veya `ANALİZ BTC-USD` (Kripto)\n"
-        "🔹 `ANALİZ MAC` (Yerli Fon)\n"
-        "🔹 `ANALİZ AAPL` (ABD Hissesi)\n"
+        "🤖 *Bot Güncellendi (Küçük/Büyük Harf Duyarsız Analiz)* \n\n"
+        "Artık ister büyük harfle (`ANALİZ THYAO`), ister küçük harfle (`analiz eth`) yaz; sistem komutunu anında kapıp analiz edecektir!\n\n"
+        "📌 *Örnek Kullanımlar:*\n"
+        "🔹 `analiz thyao` / `ANALİZ THYAO`\n"
+        "🔹 `analiz eth` / `ANALİZ ETH`\n"
+        "🔹 `analiz mac` (Yerli Fon)\n"
+        "🔹 `analiz aapl` (ABD Hissesi)\n"
         "🔹 `Tüm Piyasa Analizi` (Tüm kategorilerdeki gözde varlıkları listeler)"
     )
     

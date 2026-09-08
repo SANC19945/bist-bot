@@ -94,21 +94,31 @@ def teknik_indikatorleri_hesapla(df):
     df['BB_Lower'] = df['BB_Middle'] - (std * 2)
     return df
 
-def tekli_hisse_analiz_et(hisse_kodu):
-    symbol = hisse_kodu.upper().strip()
-    if not ("." in symbol) and len(symbol) <= 5 and not symbol in ISIM_SOZLUGU:
-        symbol_is = symbol + ".IS"
+def evrensel_hisse_bul(hisse_kodu):
+    # Kullanıcının yazdığı kodu temizle
+    code = hisse_kodu.upper().strip()
+    
+    # 1. Eğer doğrudan sözlükte varsa veya içinde nokta geçiyorsa (örn: OR.PA, SAP.DE, THYAO.IS) doğrudan dene
+    adaylar = [code]
+    if not "." in code:
+        adaylar = [code + ".IS", code] # Önce BIST uzantısı (.IS) dener, olmazsa saf kodu dener
+        
+    for aday in adaylar:
         try:
-            test_df = yf.download(symbol_is, period="5d", progress=False)
-            if not test_df.empty:
-                symbol = symbol_is
+            df_test = yf.download(aday, period="5d", progress=False)
+            if not df_test.empty and len(df_test) > 0:
+                return aday
         except:
-            pass
+            continue
+    return code # Hiçbiri olmazsa orijinali döndürür
+
+def evrensel_analiz_et(hisse_kodu):
+    symbol = evrensel_hisse_bul(hisse_kodu)
 
     try:
         df = yf.download(symbol, period="3mo", interval="1d", progress=False)
         if df.empty or len(df) < 30:
-            return f"❌ *{symbol}* için yeterli veri bulunamadı veya hatalı kod girdiniz."
+            return f"❌ *{hisse_kodu}* için yeterli veri bulunamadı. Lütfen sembolü kontrol edin (Örn: `THYAO`, `GARAN`, `AAPL`)."
         
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(0)
@@ -117,7 +127,9 @@ def tekli_hisse_analiz_et(hisse_kodu):
         
         son_fiyat = float(df['Close'].iloc[-1])
         rsi_deger = float(df['RSI'].iloc[-1])
+        dunku_ema9 = float(df['EMA9'].iloc[-2])
         bugunku_ema9 = float(df['EMA9'].iloc[-1])
+        dunku_ema21 = float(df['EMA21'].iloc[-2])
         bugunku_ema21 = float(df['EMA21'].iloc[-1])
 
         macd_val = float(df['MACD'].iloc[-1])
@@ -125,40 +137,55 @@ def tekli_hisse_analiz_et(hisse_kodu):
         bb_upper = float(df['BB_Upper'].iloc[-1])
         bb_lower = float(df['BB_Lower'].iloc[-1])
         
-        temiz_isim = ISIM_SOZLUGU.get(symbol, symbol.replace(".IS", ""))
+        temiz_isim = ISIM_SOZLUGU.get(symbol, symbol)
         su_anki_zaman = get_turkey_time().strftime('%d.%m.%Y %H:%M')
 
-        trend = "Yükseliş (Boğa) Trendi 🟢" if bugunku_ema9 > bugunku_ema21 else "Düşüş (Ayı) Trendi 🔴"
+        # Trend durumu
+        trend_pozitif = bugunku_ema9 > bugunku_ema21
+        trend = "Yükseliş (Boğa) Trendi 🟢" if trend_pozitif else "Düşüş (Ayı) Trendi 🔴"
 
+        # RSI Durumu
         if rsi_deger > 70:
             rsi_durum = "Aşırı Alım Bölgesinde ⚠️"
         elif rsi_deger < 30:
-            rsi_durum = "Aşırı Satım Bölgesinde (Fırsat Olabilir) 💡"
+            rsi_durum = "Aşırı Satım Bölgesinde (Fırsat) 💡"
         else:
             rsi_durum = "Normal Bantta 📊"
 
-        if rsi_deger > 65:
-            risk = "Orta-Yüksek (Aşırı Alım Sınırı)"
-        elif rsi_deger < 35:
-            risk = "Düşük (Destek Seviyelerinde)"
+        # NET KARAR (AL / SAT / TUT / UZAK DUR) MEKANİZMASI
+        if trend_pozitif and rsi_deger <= 65 and macd_val > macd_sig:
+            tavsiye = "GÜÇLÜ AL 🟢 (Yükseliş Trendi & Destekli)"
+            risk = "Düşük / Orta"
+        elif trend_pozitif and rsi_deger > 70:
+            tavsiye = "TUT / KÂR AL 🟡 (Aşırı Alım Sınırında, Dikkatli Ol)"
+            risk = "Orta - Yüksek"
+        elif not trend_pozitif and rsi_deger < 35:
+            tavsiye = "TUT / İZLE 🟡 (Dip Arayışı / Destek Bölgesi)"
+            risk = "Orta"
+        elif not trend_pozitif and rsi_deger >= 35:
+            tavsiye = "SAT / UZAK DUR 🔴 (Düşüş Trendi Baskın)"
+            risk = "Yüksek"
         else:
+            tavsiye = "TUT / BEKLE ⚖️ (Yatay veya Kararsız Seyir)"
             risk = "Dengeli / Orta"
 
         rapor = (
-            f"🔍 *DETAYLI VARLIK ANALİZİ*\n\n"
+            f"🎯 *DETAYLI VARLIK ANALİZİ VE KARAR*\n\n"
             f"🏢 *Varlık:* `{temiz_isim}`\n"
             f"💰 *Güncel Fiyat:* `{son_fiyat:.2f}`\n"
+            f"📌 *NET KARAR:* `{tavsiye}`\n"
+            f"----------------------------------\n"
             f"📈 *Trend Durumu:* `{trend}`\n"
-            f"⚡ *EMA Kesişim Durumu:* `{'EMA9 > EMA21 (Pozitif)' if bugunku_ema9 > bugunku_ema21 else 'EMA9 < EMA21 (Negatif)'}`\n"
+            f"⚡ *EMA Kesişimi:* `{'EMA9 > EMA21 (Pozitif)' if trend_pozitif else 'EMA9 < EMA21 (Negatif)'}`\n"
             f"📊 *RSI (14):* `{rsi_deger:.1f} ({rsi_durum})`\n"
             f"📉 *MACD:* `{'Pozitif / Güçlü' if macd_val > macd_sig else 'Negatif / Zayıf'}`\n"
             f"📐 *Bollinger Bantları:* `Üst: {bb_upper:.2f} | Alt: {bb_lower:.2f}`\n"
             f"⚖️ *Risk Değerlendirmesi:* `{risk}`\n"
-            f"🕒 *Analiz Zamanı:* `{su_anki_zaman}`"
+            f"🕒 *Zaman:* `{su_anki_zaman}`"
         )
         return rapor
     except Exception as e:
-        return f"⚠️ Analiz sırasında hata oluştu: {str(e)}"
+        return f"⚠️ Analiz hatası: `{str(e)}`. Lütfen geçerli bir borsa kodu girdiğinizden emin olun."
 
 def etf_fon_tara_ve_gonder(etf_listesi):
     bulunan = 0
@@ -171,19 +198,12 @@ def etf_fon_tara_ve_gonder(etf_listesi):
                 df.columns = df.columns.get_level_values(0)
 
             df = teknik_indikatorleri_hesapla(df)
-            
             son_fiyat = float(df['Close'].iloc[-1])
             rsi_deger = float(df['RSI'].iloc[-1])
-            
             dunku_ema9 = float(df['EMA9'].iloc[-2])
             bugunku_ema9 = float(df['EMA9'].iloc[-1])
             dunku_ema21 = float(df['EMA21'].iloc[-2])
             bugunku_ema21 = float(df['EMA21'].iloc[-1])
-
-            macd_val = float(df['MACD'].iloc[-1])
-            macd_sig = float(df['MACD_Signal'].iloc[-1])
-            bb_upper = float(df['BB_Upper'].iloc[-1])
-            bb_lower = float(df['BB_Lower'].iloc[-1])
             
             temiz_isim = ISIM_SOZLUGU.get(etf, etf)
             su_anki_zaman = get_turkey_time().strftime('%d.%m.%Y %H:%M')
@@ -193,23 +213,18 @@ def etf_fon_tara_ve_gonder(etf_listesi):
                     f"🟢 *ETF / FON - AL SİNYALİ*\n\n"
                     f"📦 *Fon/ETF:* `{temiz_isim}`\n"
                     f"💰 *Fiyat:* `{son_fiyat:.2f} $`\n"
-                    f"📈 *EMA Kesişimi:* EMA9 / EMA21 Yukarı Kesti\n"
-                    f"📊 *RSI (14):* `{rsi_deger:.1f}`\n"
-                    f"⚖️ *Risk Skoru:* `Düşük / Orta`\n"
+                    f"📊 *RSI:* `{rsi_deger:.1f}`\n"
                     f"🕒 *Zaman:* `{su_anki_zaman}`"
                 )
                 telegram_mesaj_gonder(mesaj)
                 time.sleep(15)
                 bulunan += 1
-
             elif dunku_ema9 >= dunku_ema21 and bugunku_ema9 < bugunku_ema21:
                 mesaj = (
                     f"🔴 *ETF / FON - SAT SİNYALİ*\n\n"
                     f"📦 *Fon/ETF:* `{temiz_isim}`\n"
                     f"💰 *Fiyat:* `{son_fiyat:.2f} $`\n"
-                    f"📉 *EMA Kesişimi:* EMA9 / EMA21 Aşağı Kesti\n"
-                    f"📊 *RSI (14):* `{rsi_deger:.1f}`\n"
-                    f"⚖️ *Risk Skoru:* `Yüksek`\n"
+                    f"📊 *RSI:* `{rsi_deger:.1f}`\n"
                     f"🕒 *Zaman:* `{su_anki_zaman}`"
                 )
                 telegram_mesaj_gonder(mesaj)
@@ -230,48 +245,33 @@ def hisse_tara_ve_gonder(hisse_listesi, kategori_adi, para_birimi):
                 df.columns = df.columns.get_level_values(0)
 
             df = teknik_indikatorleri_hesapla(df)
-            
             son_fiyat = float(df['Close'].iloc[-1])
             rsi_deger = float(df['RSI'].iloc[-1])
-            
             dunku_ema9 = float(df['EMA9'].iloc[-2])
             bugunku_ema9 = float(df['EMA9'].iloc[-1])
             dunku_ema21 = float(df['EMA21'].iloc[-2])
             bugunku_ema21 = float(df['EMA21'].iloc[-1])
-
-            macd_val = float(df['MACD'].iloc[-1])
-            macd_sig = float(df['MACD_Signal'].iloc[-1])
-            bb_upper = float(df['BB_Upper'].iloc[-1])
-            bb_lower = float(df['BB_Lower'].iloc[-1])
             
             temiz_isim = ISIM_SOZLUGU.get(hisse, hisse.replace(".IS", ""))
             su_anki_zaman = get_turkey_time().strftime('%d.%m.%Y %H:%M')
 
             if dunku_ema9 <= dunku_ema21 and bugunku_ema9 > bugunku_ema21:
-                risk_skoru = "Düşük" if rsi_deger < 60 else "Orta (Aşırı Alım Sınırı)"
                 mesaj = (
-                    f"🟢 *{kategori_adi} - ÇOKLU İNDİKATÖR AL SİNYALİ*\n\n"
+                    f"🟢 *{kategori_adi} - AL SİNYALİ*\n\n"
                     f"🏢 *Varlık:* `{temiz_isim}`\n"
                     f"💰 *Fiyat:* `{son_fiyat:.2f} {para_birimi}`\n"
-                    f"📈 *EMA Kesişimi:* EMA9 / EMA21 Yukarı Kesti\n"
-                    f"⚡ *MACD Durumu:* `{'Pozitif' if macd_val > macd_sig else 'Nötr'}`\n"
-                    f"📊 *RSI (14):* `{rsi_deger:.1f}`\n"
-                    f"⚖️ *Risk Skoru:* `{risk_skoru}`\n"
+                    f"📊 *RSI:* `{rsi_deger:.1f}`\n"
                     f"🕒 *Zaman:* `{su_anki_zaman}`"
                 )
                 telegram_mesaj_gonder(mesaj)
                 time.sleep(15)
                 bulunan += 1
-
             elif dunku_ema9 >= dunku_ema21 and bugunku_ema9 < bugunku_ema21:
                 mesaj = (
-                    f"🔴 *{kategori_adi} - ÇOKLU İNDİKATÖR SAT SİNYALİ*\n\n"
+                    f"🔴 *{kategori_adi} - SAT SİNYALİ*\n\n"
                     f"🏢 *Varlık:* `{temiz_isim}`\n"
                     f"💰 *Fiyat:* `{son_fiyat:.2f} {para_birimi}`\n"
-                    f"📉 *EMA Kesişimi:* EMA9 / EMA21 Aşağı Kesti\n"
-                    f"⚡ *MACD Durumu:* `{'Negatif' if macd_val < macd_sig else 'Nötr'}`\n"
-                    f"📊 *RSI (14):* `{rsi_deger:.1f}`\n"
-                    f"⚖️ *Risk Skoru:* `Yüksek`\n"
+                    f"📊 *RSI:* `{rsi_deger:.1f}`\n"
                     f"🕒 *Zaman:* `{su_anki_zaman}`"
                 )
                 telegram_mesaj_gonder(mesaj)
@@ -304,65 +304,63 @@ def komutlari_kontrol_et():
                     parcalar = text.split()
                     if len(parcalar) > 1:
                         hisse_kodu = parcalar[1]
-                        telegram_mesaj_gonder(f"⏳ `{hisse_kodu.upper()}` için detaylı teknik analiz hesaplanıyor...")
-                        analiz_sonucu = tekli_hisse_analiz_et(hisse_kodu)
+                        telegram_mesaj_gonder(f"⏳ `{hisse_kodu.upper()}` için evrensel teknik analiz hesaplanıyor...")
+                        analiz_sonucu = evrensel_analiz_et(hisse_kodu)
                         telegram_mesaj_gonder(analiz_sonucu)
                     else:
-                        telegram_mesaj_gonder("⚠️ Lütfen analiz etmek istediğiniz kodu yazın. Örnek: `ANALİZ THYAO` veya `ANALİZ QQQ`")
+                        telegram_mesaj_gonder("⚠️ Lütfen kod belirtin. Örnek: `ANALİZ THYAO`, `ANALİZ GARAN`, `ANALİZ AAPL`")
                 
-                # Fon/ETF Sorgulama Kısayolu (Örn: FON QQQ veya /fon SPY)
                 elif text_upper.startswith("FON") or text_upper.startswith("/FON"):
                     parcalar = text.split()
                     if len(parcalar) > 1:
                         fon_kodu = parcalar[1]
-                        telegram_mesaj_gonder(f"⏳ `{fon_kodu.upper()}` fonu / ETF'i analiz ediliyor...")
-                        analiz_sonucu = tekli_hisse_analiz_et(fon_kodu)
+                        telegram_mesaj_gonder(f"⏳ `{fon_kodu.upper()}` fonu/ETF'i analiz ediliyor...")
+                        analiz_sonucu = evrensel_analiz_et(fon_kodu)
                         telegram_mesaj_gonder(analiz_sonucu)
                     else:
-                        telegram_mesaj_gonder("⚠️ Lütfen fon/ETF kodunu belirtin. Örnek: `FON QQQ` veya `FON SPY`")
+                        telegram_mesaj_gonder("⚠️ Örnek: `FON QQQ` veya `FON SPY`")
                 
                 elif text_upper in ["/BIST", "BIST"]:
                     telegram_mesaj_gonder("🔍 *BIST 100* taraması başlatıldı...")
                     adet = hisse_tara_ve_gonder(bist, "BIST 100", "TL")
-                    telegram_mesaj_gonder(f"✅ BIST taraması bitti. Bulunan sinyal: {adet}")
+                    telegram_mesaj_gonder(f"✅ BIST bitti. Bulunan sinyal: {adet}")
                     
                 elif text_upper in ["/ABD", "ABD"]:
-                    telegram_mesaj_gonder("🔍 *ABD BORSALARI* taraması başlatıldı...")
+                    telegram_mesaj_gonder("🔍 *ABD Borsa* taraması başlatıldı...")
                     adet = hisse_tara_ve_gonder(abd, "ABD BORSALARI", "$")
-                    telegram_mesaj_gonder(f"✅ ABD taraması bitti. Bulunan sinyal: {adet}")
+                    telegram_mesaj_gonder(f"✅ ABD bitti. Bulunan sinyal: {adet}")
                     
                 elif text_upper in ["/AVRUPA", "AVRUPA"]:
-                    telegram_mesaj_gonder("🔍 *AVRUPA BORSALARI* taraması başlatıldı...")
+                    telegram_mesaj_gonder("🔍 *Avrupa Borsa* taraması başlatıldı...")
                     adet = hisse_tara_ve_gonder(avrupa, "AVRUPA BORSALARI", "€ / £")
-                    telegram_mesaj_gonder(f"✅ Avrupa taraması bitti. Bulunan sinyal: {adet}")
+                    telegram_mesaj_gonder(f"✅ Avrupa bitti. Bulunan sinyal: {adet}")
 
                 elif text_upper in ["/ETF", "ETF", "FONLER"]:
-                    telegram_mesaj_gonder("🔍 *Yatırım Fonları ve ETF'ler* taranıyor...")
+                    telegram_mesaj_gonder("🔍 *ETF / Fonlar* taranıyor...")
                     adet = etf_fon_tara_ve_gonder(etf)
-                    telegram_mesaj_gonder(f"✅ ETF/Fon taraması bitti. Bulunan sinyal: {adet}")
+                    telegram_mesaj_gonder(f"✅ ETF taraması bitti. Bulunan sinyal: {adet}")
                     
                 elif text_upper in ["/TUMU", "TÜMÜ", "TUM"]:
-                    telegram_mesaj_gonder("🔍 Tüm piyasalar ve fonlar için kapsamlı tarama başlatıldı...")
+                    telegram_mesaj_gonder("🔍 Tüm piyasalar taranıyor...")
                     s1 = hisse_tara_ve_gonder(bist, "BIST 100", "TL")
                     s2 = hisse_tara_ve_gonder(abd, "ABD BORSALARI", "$")
                     s3 = hisse_tara_ve_gonder(avrupa, "AVRUPA BORSALARI", "€ / £")
                     s4 = etf_fon_tara_ve_gonder(etf)
-                    telegram_mesaj_gonder(f"✅ Tüm taramalar tamamlandı. Toplam sinyal: {s1 + s2 + s3 + s4}")
+                    telegram_mesaj_gonder(f"✅ Taramalar bitti. Toplam sinyal: {s1 + s2 + s3 + s4}")
     except Exception as e:
         print(f"Komut okuma hatası: {e}")
 
 if __name__ == "__main__":
-    print("Bot aktif! Komutlar dinleniyor...")
+    print("Bot evrensel analiz moduyla aktif!")
     telegram_mesaj_gonder(
-        "🤖 *Bot Aktif (Fon & ETF Modülü Eklendi!)* \n\n"
-        "📌 *Mevcut Komutlar:*\n"
-        "🔹 `BIST` (BIST Taraması)\n"
-        "🔹 `ABD` (ABD Borsa Taraması)\n"
-        "🔹 `AVRUPA` (Avrupa Borsa Taraması)\n"
-        "🔹 `ETF` (Yatırım Fonları / ETF Taraması)\n"
-        "🔹 `TÜMÜ` (Hepsini Tara)\n"
-        "🔹 `ANALİZ THYAO` (Hisse Detay Analizi)\n"
-        "🔹 `FON QQQ` veya `FON GLD` (Fon/ETF Detay Analizi)"
+        "🤖 *Bot Güncellendi (Evrensel Arama & Net Karar Eklendi)* \n\n"
+        "Artık dünyanın veya BIST'in **istediğin herhangi bir hisse kodunu** yazarak analiz edebilirsin!\n\n"
+        "📌 *Örnek Komutlar:*\n"
+        "🔹 `ANALİZ THYAO`\n"
+        "🔹 `ANALİZ GARAN`\n"
+        "🔹 `ANALİZ KCHOL`\n"
+        "🔹 `ANALİZ AAPL`\n"
+        "🔹 `BIST` / `ABD` / `ETF`"
     )
     
     while True:
